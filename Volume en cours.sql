@@ -39,7 +39,9 @@ PROC SQL;
           t1.ETA_NUM,
 		  2000 + &an AS Year
       FROM ORAUSER.LISTE_ACTES_CHIR_&an. t1
-      GROUP BY t1.ETA_NUM;
+      GROUP BY case when t1.ETA_NUM NOT IN &AP.
+	   	    then t1.ETA_NUM 
+	   	    else t1.ETA_NUM_GEO end;
 QUIT;
 
 /* ********** Table unique ********** */
@@ -73,7 +75,9 @@ PROC SQL;
 			2000 + &an AS Year
       FROM ORAUSER.Liste_Actes_chir_&an. t1, ORAVUE.T_MCO&an.A t3
       WHERE (t1.ETA_NUM = t3.ETA_NUM AND t1.RSA_NUM = t3.RSA_NUM)
-      GROUP BY t3.CDC_ACT, t1.ETA_NUM;
+      GROUP BY t3.CDC_ACT, case when t1.ETA_NUM NOT IN &AP.
+	   	    then t1.ETA_NUM 
+	   	    else t1.ETA_NUM_GEO end;
 QUIT;
 
 /* ********** Table unique Volumes actes chir CCAM ********** */
@@ -93,7 +97,7 @@ QUIT;
 	quit;
 %end;
 
-/* ********** Valeurs par types d'actes CCAM ********** */
+/* ********** Nombre d'actes par types d'actes CCAM ********** */
 
 %_eg_conditional_dropds(ORAUSER.NB_ACTES_CHIR_BYA_&an.);
 
@@ -162,7 +166,9 @@ PROC SQL;
           t1.ETA_NUM,
 		  2000 + &an AS Year
       FROM ORAUSER.LISTE_ACTES_AMBU_CHIR_&an. t1
-      GROUP BY t1.ETA_NUM;
+      GROUP BY case when t1.ETA_NUM NOT IN &AP.
+	   	    then t1.ETA_NUM 
+	   	    else t1.ETA_NUM_GEO end;
 QUIT;
 
 
@@ -197,7 +203,9 @@ PROC SQL;
 			2000 + &an AS Year
       FROM ORAUSER.Liste_Actes_ambu_chir_&an. t1, ORAVUE.T_MCO&an.A t3
       WHERE (t1.ETA_NUM = t3.ETA_NUM AND t1.RSA_NUM = t3.RSA_NUM)
-      GROUP BY t3.CDC_ACT, t1.ETA_NUM;
+      GROUP BY t3.CDC_ACT, case when t1.ETA_NUM NOT IN &AP.
+	   	    then t1.ETA_NUM 
+	   	    else t1.ETA_NUM_GEO end;
 QUIT;
 
 
@@ -258,10 +266,6 @@ QUIT;
 %_eg_conditional_dropds(ORAUSER.LISTE_ACTES_CHIR_&an.);
 %_eg_conditional_dropds(ORAUSER.VOLUME_ACTES_AMBU_CHIR_BYA&an.);
 %_eg_conditional_dropds(ORAUSER.VOLUME_ACTES_CHIR_BYA&an.);
-
-
-
-
 
 %end;
 %mend;
