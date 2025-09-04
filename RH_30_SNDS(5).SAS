@@ -81,7 +81,8 @@
 /***********************************************************************************/
 
 %macro fichier_an (an1);
-	/* sélection des soins palliatifs en DA, DP_UM et DR_UM */
+
+/* sélection des soins palliatifs en DA, DP_UM et DR_UM */
 	proc sql;
 		create table diag_20&an1. as 
 		select distinct ETA_NUM, RSA_NUM , 1 as DA_SoinsPall
@@ -89,40 +90,65 @@
 		where ETA_NUM not in &AP. and typ_diag > '2' and substr(upcase(diag),1,4)= "Z515";
 	quit;
 
-	proc sql;
-		create table fixe_20&an1. as 
-		select 	a.ETA_NUM, a.RSA_NUM, ENT_MOD, SOR_MOD, SEJ_NBJ, a.SOR_ANN, a.SOR_MOI, a.COD_SEX, BDI_COD, AGE_ANN, 
-				b.NIR_ANO_17, b.EXE_SOI_DTD, b.EXE_SOI_DTF 
-		from ORAVUE.T_MCO&an1.B a left join ORAVUE.T_MCO&an1.C b
-		on a.ETA_NUM = b.ETA_NUM and a.RSA_NUM = b.RSA_NUM
-		where 	/* suppression des doublons*/
-				a.ETA_NUM not in &AP. 
-				/* exclusion des séjours de type B */
-				and (SEJ_TYP^="B" or missing(SEJ_TYP))
-				/* sélection des séjours bien chainés */
-				and NIR_RET = '0' and NAI_RET = '0' and SEX_RET = '0' and SEJ_RET = '0' and FHO_RET = '0' 
-				and PMS_RET = '0' /*and DAT_RET = '0' and COH_NAI_RET= '0' and COH_SEX_RET= '0'
-				/* Sur N+1, sélection des mois de janvier février N+1 */
-				%if "&an1"="&anp1" %then %do; and a.SOR_MOI in ("01","02") %end;
-		;
+proc sql;
+	create table fixe_20&an1. as 
+	select 	a.ETA_NUM, a.RSA_NUM, ENT_MOD, SOR_MOD, SEJ_NBJ, a.SOR_ANN, a.SOR_MOI, a.COD_SEX, BDI_COD, AGE_ANN, 
+			b.NIR_ANO_17, b.EXE_SOI_DTD, b.EXE_SOI_DTF 
+	from ORAVUE.T_MCO&an1.B a left join ORAVUE.T_MCO&an1.C b
+	on a.ETA_NUM = b.ETA_NUM and a.RSA_NUM = b.RSA_NUM
+	where 	/* suppression des doublons*/
+			a.ETA_NUM not in &AP. 
+			/* exclusion des séjours de type B */
+			and (SEJ_TYP^="B" or missing(SEJ_TYP))
+			/* sélection des séjours bien chainés */
+			and NIR_RET = '0' and NAI_RET = '0' and SEX_RET = '0' and SEJ_RET = '0' and FHO_RET = '0' 
+			and PMS_RET = '0' /*and DAT_RET = '0' and COH_NAI_RET= '0' and COH_SEX_RET= '0'
+			/* Sur N+1, sélection des mois de janvier février N+1 */
+			%if "&an1"="&anp1" %then %do; and a.SOR_MOI in ("01","02") %end;
+	;
+	
+	/*Récupération/normalisation du ghm en vN+1 pour les données N et N+1 et vN pour les données N-1*/ 
+	create table rsa_chain_20&an1. as 
+	select 	a.*, b.GHM_NUM, d.DA_SoinsPall
+	from fixe_20&an1 a
+	
+	%if "an1"<2015%then %do;
+		%if "&an1"="&anp1" %then %do;	
+		%let suffix_code = %eval(67 + (20&an1. - 2011));
+	    %let suffix = %sysfunc(byte(&suffix_code));
+	    %let table = ORAVUE.T_MCO&an1.GV11&suffix;
+	left join ORAVUE.T_MCO&anp1.GV11&suffix b on a.ETA_NUM = b.ETA_NUM and a.RSA_NUM = b.RSA_NUM
+		%end;
+		%else %do;	
+		%let suffix_code = %eval(67 + (20&an1. - 2010));
+	    %let suffix = %sysfunc(byte(&suffix_code));
+	    %let table = ORAVUE.T_MCO&an1.GV11&suffix;
+	left join ORAVUE.T_MCO&anp1.GV11&suffix b on a.ETA_NUM = b.ETA_NUM and a.RSA_NUM = b.RSA_NUM
+		%end; 	
+	%end;
+	/* Sélection pour 2015 */
+	%if"an1"=2015 %then %do;
+		%if "&an1"="&anp1" %then %do;	
+			left join ORAVUE.T_MCO&anp1.GV20&anp1. b on a.ETA_NUM = b.ETA_NUM and a.RSA_NUM = b.RSA_NUM
+		%end;
+		%else %do;	
+			left join ORAVUE.T_MCO&an1.GV11G b on a.ETA_NUM = b.ETA_NUM and a.RSA_NUM = b.RSA_NUM	 
+		%end;
+	%end;
+	/* Sélection pour 2015 */
+	%if "an1">2015 %then %do;
+	%if "&an1"="&anp1" %then %do;	
+			left join ORAVUE.T_MCO&anp1.GV20&anp1. b on a.ETA_NUM = b.ETA_NUM and a.RSA_NUM = b.RSA_NUM
+		%end;
+		%else %do;	
+			left join ORAVUE.T_MCO&an1.GV20&an1. b on a.ETA_NUM = b.ETA_NUM and a.RSA_NUM = b.RSA_NUM	 
+		%end;
+	%end;
+	left join diag_20&an1. d on a.ETA_NUM = d.ETA_NUM and a.RSA_NUM = d.RSA_NUM
+	/* Exclusion des séances et des séjours groupés en erreurs */
+	where substr(b.GHM_NUM,1,2) not in ("28","90");
+quit;
 		
-		/*Récupération du ghm en vN+1 pour les données N et N+1 et vN pour les données N-1*/ 
-		create table rsa_chain_20&an1 as 
-		select 	a.*, b.GHM_NUM, d.DA_SoinsPall
-		from fixe_20&an1 a
-			%if "&an1"="&anp1" %then %do;	
-/* table à modif à chaque changement d'année 
-quand année < 2013 */left join ORAVUE.T_MCO&anp1.GV11F b on a.ETA_NUM = b.ETA_NUM and a.RSA_NUM = b.RSA_NUM
-			%end;
-			%else %do;	
-/* table à modif à chaque changement d'année 
-quand année < 2013 */left join ORAVUE.T_MCO&an.GV11E b on a.ETA_NUM = b.ETA_NUM and a.RSA_NUM = b.RSA_NUM	  
-			%end; 	
-		left join diag_20&an1 d on a.ETA_NUM = d.ETA_NUM and a.RSA_NUM = d.RSA_NUM
-		/* Exclusion des séances et des séjours groupés en erreurs */
-		where substr(b.GHM_NUM,1,2) not in ("28","90");
-	quit;
-
 	data rsa_chain_20&an1; 
 		set rsa_chain_20&an1;
 		if DA_SoinsPall=. then DA_SoinsPall=0;
@@ -132,6 +158,7 @@ quand année < 2013 */left join ORAVUE.T_MCO&an.GV11E b on a.ETA_NUM = b.ETA_NUM
 %fichier_an(&anm1);
 %fichier_an(&an); 
 %fichier_an(&anp1);
+
 
 data rsa_&anm1._&anp1;
 set rsa_chain_20&anm1 rsa_chain_20&an rsa_chain_20&anp1; 
@@ -217,7 +244,8 @@ nbhospit&annee=nbhospit&annee+1;
 
 /*EXCLUSION DES PATIENTS*/
 
-/* Exclusion : patient ayant eu au moins un séjours de soins palliatifs quil soit : codé en diagnostic principal  ou en diagnostic associé  */
+/* Exclusion : patient ayant eu au moins un séjours de soins palliatifs qu’il soit : 
+codé en diagnostic principal  ou en diagnostic associé  */
 if DA_SoinsPall=1 or GHM_NUM in ("23Z02Z","23Z02T") then supprSoinPall=1;
 else  supprSoinPall=0;
 
@@ -264,7 +292,7 @@ retain nbhospit&anneep1;
 if first.NIR_ANO_17 then nbhospit&anneep1=0;
 nbhospit&anneep1=nbhospit&anneep1+1;
 
-/* Inclusion - patient dont le premier séjour aurait lieu début janvier N+1 et serai précédé dun séjour en décembre N dans un délai 30j;*/
+/* Inclusion - patient dont le premier séjour aurait lieu début janvier N+1 et serai précédé d’un séjour en décembre N dans un délai 30j;*/
 if first.NIR_ANO_17 and delai2>=1 and  delai2<=30 then inclAnSuiv=1;
 else inclAnSuiv=0;
 
@@ -277,7 +305,6 @@ or substr(BDI_COD,3,3)='999'
 or AGE_ANN <18
 then inclAnSuiv=0; 
 run;           
-
 
 /* Intégration des rehospitalisations N+1 suite à une hospitalisation terminée en N */
 
@@ -299,7 +326,8 @@ if nbhospit&anneep1=1 then do;
 	supprSoinPallP=0; supprPasFceP=0; supprCodeGeoNPP=0; supprMineurP=0; 
 end;
 if nbhospit&anneep1=. then NbDernHospit&annee=.;	/* dernière hospit de l'année N */
-if nbhospit&anneep1=1 and NbDernHospit&annee=. then delete;  /* suppression des réhospit qui se termine en N+1 suite à une 1ere hospit antérieur à l'année N (en N-1) */
+if nbhospit&anneep1=1 and NbDernHospit&annee=. then delete;  
+/* suppression des réhospit qui se termine en N+1 suite à une 1ere hospit antérieur à l'année N (en N-1) */
 run;   
 
 /* recalcul des sommes par patient*/
@@ -333,13 +361,13 @@ run;
  - les séjours pour cataracte (02C05 et 02C12)*/
 																						 
 /* Cette table contient les variables d'EXCLUSION DES PATIENTS  : 
- - supprSoinPallP_fin : patient ayant eu au moins un séjours de soins palliatifs quil soit : codé en diagnostic principal ou en diagnostic associé  
+ - supprSoinPallP_fin : patient ayant eu au moins un séjours de soins palliatifs qu’il soit : codé en diagnostic principal ou en diagnostic associé  
  - supprPasFceP_fin : patient avec un séjour avec code géo étranger
  - supprCodeGeoNPP_fin : patient avec un séjour avec code géo non précis (terminant par 999) 
  - supprMineurP_fin : patient avec un séjour avec un age <18 ans 	  */
 
 /* Cette table inclut les séjours terminés en janvier fevrier N+1 :
- - qui sont précédés dun séjour de N dans un délai 30j;
+ - qui sont précédés d’un séjour de N dans un délai 30j;
  - qui ne soint pas des séjours de soins palliatifs 
  - mode d'entrée = domicile, 
  - qui ont un code géo ni étranger ni TOM et ni imprécis 
@@ -355,11 +383,15 @@ run;
 
 data Bdd_rh30_tot_index_&annee; 
 set Bdd_rh30_Base_1ercouple_&annee;
-/* Suppression des patients ayant eu au moins un séjours de soins palliatifs quil soit codé en diagnostic principal ou en diagnostic associé	
+/* Suppression des patients ayant eu au moins un séjours de soins palliatifs qu’il soit 
+codé en diagnostic principal ou en diagnostic associé	
  => supprSoinPallP_fin>=1 */
-/* Suppression des séjours qui sont suivis dun transfert (ne peuvent pas être des séjours index) */
+/* Suppression des séjours qui sont suivis d’un transfert (ne peuvent pas être des séjours index) */
 if ((delai_suiv=0 or (delai_suiv<=-1 and delai_suiv ne .)) or SOR_MOD  in ("0","6","7"))then supprTrans=1;
 else supprTrans=0;
+/*Je garde les séjours de type chirurgie*/
+if index(GHM_NUM, 'C')>1 or GHM_NUM in ("03K02", "05K14", "11K07", "12K06", "09Z02", "14Z08", "23Z03") then supprCHir=1;
+else supprCHir=0;
 /* Suppression des séjours terminés par un décès (ne peuvent pas être des séjours index) */
 if SOR_MOD="9" then supprDC=1;
 else supprDC=0;
@@ -383,7 +415,7 @@ run;
 /* Base avec les séjours index potentiels */
 data Bdd_sej_index_potentiel_&annee; 
 set Bdd_rh30_tot_index_&annee;
-if supprSoinPallP_fin>=1 or supprTrans=1 or supprDC=1 or supprPasFceP_fin>=1 or supprCodeGeoNPP_fin>=1 or supprMineurP_fin>=1 or supprAnSuiv=1 or 
+if supprSoinPallP_fin>=1 or supprCHir=0 or supprTrans=1 or supprDC=1 or supprPasFceP_fin>=1 or supprCodeGeoNPP_fin>=1 or supprMineurP_fin>=1 or supprAnSuiv=1 or 
 supprEntPasDom=1 or suppr30jprec=1 then delete;
 Sej_Index_Pot='1';
 run;
@@ -405,7 +437,7 @@ proc sort data=Bdd_rh30_tot_rehosp_&annee._;  by NIR_ANO_17 EXE_SOI_DTD EXE_SOI_
 data Bdd_rh30_tot_rehosp_&annee; 
 set Bdd_rh30_tot_rehosp_&annee._;
 by NIR_ANO_17 EXE_SOI_DTD EXE_SOI_DTF numordre;
-/* je supprime les patients ayant eu au moins un séjour de soins palliatifs quil soit : codé en diagnostic principal ou en diagnostic associé	
+/* je supprime les patients ayant eu au moins un séjour de soins palliatifs qu’il soit : codé en diagnostic principal ou en diagnostic associé	
  => supprSoinPallP_fin>=1 */
 /* je supprime les patients avec un séjour avec code géo étranger
 => supprPasFceP_fin>=1 */
@@ -493,31 +525,41 @@ index_prec=lag(Index_RH30j);
 if RH30j=1 and	index_prec=1 then RH30j_fin=1; /* si RH30j_fin=1 alors RH30 suite à un séjour index */
 run;
 
+/* création de compteurs de séjours chronologique, 
+	pour trouver le sej index et la première rehospitalisation */
+
 data Bdd_Global_&annee._e ;
 set  Bdd_Global_&annee._d ;
 by NIR_ANO_17 EXE_SOI_DTD EXE_SOI_DTF numordre;
 retain cpt;
-
 if first.NIR_ANO_17 then cpt=0;
-if Index_RH30j=1 or RH30j_fin=1 then do; cpt=cpt+1; couple=cpt; end; /* si le séjour est un séjour index d'une RH30 ou une RH30 suite à un séjour index, la variable couple s'implémente de 1*/
-if Index_RH30j=. and RH30j_fin=. then couple=0; /* si le séjour n'est pas un séjour index d'une RH30 ni une RH30 suite à un séjour index, la variable couple est nulle */
-
+if Index_RH30j=1 or RH30j_fin=1 then do; cpt=cpt+1; couple=cpt; end; 
+/* si le séjour est un séjour index d'une RH30 ou une RH30 suite à un séjour index, 
+la variable couple s'incrémente de 1*/
+if Index_RH30j=. and RH30j_fin=. then couple=0; 
+/* si le séjour n'est pas un séjour index d'une RH30 ni une RH30 suite à un séjour index,
+la variable couple est nulle */
 drop  cpt;
 run; 
 
 /* Somme par patient les valeurs de couple */
 proc sql;
-create table BDD_Global_&annee._e_Pat as select NIR_ANO_17, sum(couple) as couple_p from BDD_Global_&annee._e group by 1;
+create table BDD_Global_&annee._e_Pat as select NIR_ANO_17, 
+sum(couple) as couple_p from BDD_Global_&annee._e group by 1;
 /* et j'inclus cette somme dans ma base globale */
 create table BDD_Global_&annee._f as select a.*, b.* from 
 BDD_Global_&annee._e a left join BDD_Global_&annee._e_Pat b on a.NIR_ANO_17=b.NIR_ANO_17;
 quit;
 
+
+/* conserver uniquement les séjours du premier couple */
 data Bdd_Global_&annee._g;
 set Bdd_Global_&annee._f;
-/* pour les patients avec rehospit à 30j, conservation du 1er couple d'hospit uniquement (hospit index,rehospit) */
+/* pour les patients avec rehospit à 30j, 
+conservation du 1er couple d'hospit uniquement (hospit index,rehospit) */
 if couple_p>=3 and couple not in (1,2) then delete;
-/*pour les patients sans rehospit à 30j, suppression des séjours qui ne sont pas des séjours index potentiels*/ 
+/* pour les patients sans rehospit à 30j, 
+suppression des séjours qui ne sont pas des séjours index potentiels */ 
 if couple_p=0 and Sej_Index_Pot^='1' then delete;  
 run;
 
@@ -526,8 +568,10 @@ proc sort data=Bdd_Global_&annee._g; by NIR_ANO_17 EXE_SOI_DTD EXE_SOI_DTF numor
 data Bdd_Global_&annee._h;
 set Bdd_Global_&annee._g;
 by NIR_ANO_17 EXE_SOI_DTD EXE_SOI_DTF numordre;
-if couple_p=0 then do; /*pour les patients sans rehospit à 30j */
-  if first.NIR_ANO_17^=1 then delete;	 /* seule la 1er hospit est conservée = uniquement le 1er sejour index potentiel... */
+if couple_p=0 then do; 
+/* pour les patients sans rehospit à 30j */
+if first.NIR_ANO_17^=1 then delete;	 
+/* seule la 1er hospit est conservée = uniquement le 1er sejour index potentiel... */
 end;
 run;
 
@@ -539,179 +583,14 @@ drop DA_SoinsPall annee_suiv nbhospit&annee nbhospittot&annee nbhospit&anneep1 s
 index_prec couple_p delai2 delai_suiv Index_RH30j RH30j_fin;
 run;
 
-proc sort data=Bdd_rh30_meth1ercouple_&annee; by NIR_ANO_17 EXE_SOI_DTD EXE_SOI_DTF numordre; run;
-
-/*****************************************************************************************/
-/* Calcul des taux de réhospitalisation à 30 jours bruts et standardisés */
-/*****************************************************************************************/
-
-/* 1- Structure de la population (population=dénominateur du taux national) par âge et sexe => Calcul des proportions de patients par 
-classe d age et sexe au niveau national */
-
-data Bdd_rh30_meth1ercouple_&annee;
-set  Bdd_rh30_meth1ercouple_&annee;
-by NIR_ANO_17 EXE_SOI_DTD EXE_SOI_DTF numordre; 
-length clage clage_1 $11.;
-if 18<=AGE_ANN<25 then clage="[18-25[ ans"; 
-else if AGE_ANN<30 then clage="[25-30[ ans";
-else if AGE_ANN<35 then clage="[30-35[ ans";
-else if AGE_ANN<40 then clage="[35-40[ ans";
-else if AGE_ANN<45 then clage="[40-45[ ans";
-else if AGE_ANN<50 then clage="[45-50[ ans";
-else if AGE_ANN<55 then clage="[50-55[ ans";
-else if AGE_ANN<60 then clage="[55-60[ ans";
-else if AGE_ANN<65 then clage="[60-65[ ans";
-else if AGE_ANN<70 then clage="[65-70[ ans";
-else if AGE_ANN<75 then clage="[70-75[ ans";
-else if AGE_ANN<80 then clage="[75-80[ ans";
-else if AGE_ANN<85 then clage="[80-85[ ans";
-else if AGE_ANN<90 then clage="[85-90[ ans";
-else if AGE_ANN>=90 then clage="[90+ ans"; 
-
-/* recup de l'ES, la classe d age et du sexe des hospitalisations index*/
-ES_res_1=ifc(NIR_ANO_17=lag(NIR_ANO_17),lag(ETA_NUM),"");
-clage_1=ifc(NIR_ANO_17=lag(NIR_ANO_17),lag(clage),"");
-sexe_1=ifc(NIR_ANO_17=lag(NIR_ANO_17),lag(COD_SEX),"");
-run;
-
-proc sql;
-create table struct_pop_nat as
-	select distinct clage, COD_SEX ,count(distinct NIR_ANO_17) as nbpat
-	from Bdd_rh30_meth1ercouple_&annee
-	where couple in (0,1)
-	group by 1, 2; 
-create table pop_nat as
-	select distinct clage, count(distinct NIR_ANO_17) as nbpat_tot
-	from Bdd_rh30_meth1ercouple_&annee
-	where couple in (0,1); 
-create table struct_age_sex as select a.*, b.* from  struct_pop_nat a left join pop_nat b on a.clage=b.clage;
-quit;
-
-data struct_age_sex_&annee; set struct_age_sex; part_nat=nbpat/nbpat_tot; run;
-
-/* Suppression des tables temporaires */
-proc delete data= struct_pop_nat pop_nat struct_age_sex;run;
-
-
-
-/* 2 - Calcul du taux de réhospitalisation par departement, classe d age et sexe */
-
-proc sql;
-/* numérateur  */
-create table ES_num as
-select distinct ES_res_1 as ETA_NUM, COD_SEX, clage_1 as clage, sexe_1 as sexe, count(distinct NIR_ANO_17) as nbpat_num
-from Bdd_rh30_meth1ercouple_&annee
-where couple=2
-group by 1,2,3; 
-/* dénominateur */
-create table ES_den as
-select distinct ETA_NUM, clage, COD_SEX, count(distinct NIR_ANO_17) as nbpat_den
-from Bdd_rh30_meth1ercouple_&annee
-where couple in (0,1)
-group by 1,2,3; 
-quit;
-
-proc sort data=ES_num;
-by ETA_NUM clage COD_SEX;
-run;
-
-proc sort data=ES_den;
-by ETA_NUM clage COD_SEX;
-run;
-
-data ES_taux_&annee;
-merge ES_num ES_den;
-by  ETA_NUM clage COD_SEX;
-taux_ES_clage_sex= nbpat_num / nbpat_den;
-run;
-
-/* 3- application du taux de rehospit du departement à la structure d age et de sexe de la pop nationale */
-
-proc sort data=ES_taux_&annee; by  clage COD_SEX; run;
-data ES_taux_&annee._;
-merge ES_taux_&annee struct_age_sex_&annee;
-by  clage COD_SEX;
-taux_st= taux_ES_clage_sex*part_nat;
-run;
-
-proc sql;
-/* calcul des taux standardisés par département */
-create table taux_stand_ES_&annee as select distinct(ETA_NUM), sum(taux_st) as taux_RH30_stand from ES_taux_&annee._ group by 1;
-/* calcul des taux bruts par département */
-create table taux_brut_ES_&annee as select distinct(ETA_NUM), sum(nbpat_num) as num_pat, sum(nbpat_den) as den_pat
-from ES_taux_&annee group by 1;
-quit;
-data taux_brut_ES_&annee; set taux_brut_ES_&annee; taux_brut=num_pat/den_pat; run;
-/*
-proc delete 
-data= 
-MCO&annee_DP_1
-MCO&annee_DP_3
-MCO&annee_DR_2
-MCO&annee_DR_4
-MCO&annee_DA
-MCO&anneeBD_DIAG
-DIAG_&annee
-FIXE_&annee
-RSA_CHAIN_&annee
-DERN_ENR
-RSA_SUPP_&annee_B
-RSA_SUPP_&annee_C
-PAT_ANNEE_SUIV_&annee
-RSA_SUPP_&annee_D
-BDD_RH30_BASE_1ERCOUPLE_&annee
-BDD_RH30_TOT_INDEX_&annee
-BDD_SEJ_INDEX_POTENTIEL_&annee
-BDD_RH30_TOT_REHOSP_&annee
-BDD_SEJ_REHOSP_POTENTIEL_&annee
-BDD_GLOBAL_&annee
-BDD_GLOBAL_&annee_B
-RSA_EXCL_&annee
-PAT_EXCL_&annee
-RSA_SUPP_&annee
-RSA_REHOSPT_DEBUT_&annee
-BDD_RH30_TOT_REHOSP_&annee_
-BDD_GLOBAL_&annee_A
-BDD_GLOBAL_&annee_C
-BDD_GLOBAL_&annee_D
-BDD_GLOBAL_&annee_E
-BDD_GLOBAL_&annee_F
-BDD_GLOBAL_&annee_G
-BDD_GLOBAL_&annee_H
-BDD_GLOBAL_&annee_E_PAT;
-run;
-/* Taux de rehospit à 30 j = 
-proc sql; 
-select count (distinct NIR_ANO_17) as SejSansRH from Bdd_Global_&annee._h where couple=0; 
-select count (distinct NIR_ANO_17) as numerateur from Bdd_Global_&annee._h where couple=1; 
-select count (distinct NIR_ANO_17) as denominateur from Bdd_Global_&annee._h; 
-quit; 
-*/
-
-/* Sauvegarde de la table finale 
-data Bdd_rh30_meth1ercouple_&annee;
-set Bdd_Global_&annee._h;
-drop DA_SoinsPall nbhospit&annee nbhospittot&annee nbhospit&anneep1 supprEntPasDom suppr30jprec Sej_Index_Pot Rehosp_Pot RH30j RH30j_suiv SOR_ANN_suiv
-index_prec couple_p;
-run;
 
 proc sort data=Bdd_rh30_meth1ercouple_&annee; by NIR_ANO_17 EXE_SOI_DTD EXE_SOI_DTF numordre; run;
 
+%end;
+%mend;
 
-proc sql; 
-create table numerateur as 
-select ETA_NUM, count (distinct NIR_ANO_17)  as numerateur from Bdd_rh30_meth1ercouple_&annee 
-	where couple in (1,2) group by ETA_NUM; 
-create table denominateur as 
-select ETA_NUM, count (distinct NIR_ANO_17)  as denominateur 
-	from Bdd_rh30_meth1ercouple_&annee group by ETA_NUM ; 
-quit; 
+%rehosp();
 
-data Taux_RH30_par_Finess_&annee. ;
-merge numerateur denominateur;
-taux_Rh30=numerateur/denominateur;
-run; */
 
-data RH30_12;
-merge taux_brut_ES_&annee taux_stand_ES_&annee;
-run;
+
+
