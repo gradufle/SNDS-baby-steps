@@ -98,7 +98,7 @@ proc sql;
 	on a.ETA_NUM = b.ETA_NUM and a.RSA_NUM = b.RSA_NUM
 	where 	/* suppression des doublons*/
 			a.ETA_NUM not in &AP. 
-			/* exclusion des séjours de type B */
+			/* exclusion des séjours de type B : presta inter-établissement*/
 			and (SEJ_TYP^="B" or missing(SEJ_TYP))
 			/* sélection des séjours bien chainés */
 			and NIR_RET = '0' and NAI_RET = '0' and SEX_RET = '0' and SEJ_RET = '0' and FHO_RET = '0' 
@@ -135,7 +135,7 @@ proc sql;
 			left join ORAVUE.T_MCO&an1.GV11G b on a.ETA_NUM = b.ETA_NUM and a.RSA_NUM = b.RSA_NUM	 
 		%end;
 	%end;
-	/* Sélection pour 2015 */
+	/* Sélection après 2015 */
 	%if "an1">2015 %then %do;
 	%if "&an1"="&anp1" %then %do;	
 			left join ORAVUE.T_MCO&anp1.GV20&anp1. b on a.ETA_NUM = b.ETA_NUM and a.RSA_NUM = b.RSA_NUM
@@ -168,9 +168,9 @@ run;
 au calcul des RH 30 (hors séances, CMD 90, sejours de type B et séjours non correctement chainés) */
 
 
-/******************************************************************************************************/
-/* ETAPE 2) 	Exclusion des séjours ne respectant pas les critères d'inclusion 					  */
-/******************************************************************************************************/
+/*************************************************************************************/
+/* ETAPE 2) 	Exclusion des séjours ne respectant pas les critères d'inclusion 	 */
+/*************************************************************************************/
 
 data rsa_&anm1._&anp1._;
 set rsa_&anm1._&anp1;
@@ -180,13 +180,14 @@ if substr(GHM_NUM,1,2) in ("14","15","27") then delete;
 if substr(GHM_NUM,1,5) in ('11K02','17M05','17M06','17K04','17K05','17K06','17K08','17K09','23M09') then delete;
 /* suppression des séjours cataracte*/
 if substr(GHM_NUM,1,5) in ('02C05','02C12') then delete;
-/* Création de variables */
+/* Création de variables Décès, CMD, gravité, racine */
 if SOR_MOD = "9" then DECES = 1; else DECES = 0;
 PONDER = 1;
 CMD = substr(GHM_NUM,1,2);
 NIV = substr(GHM_NUM,6,1);
 RACINEV11=substr(GHM_NUM,1,5);
 length libelle_CAS  hospit $30.;
+/*Variables de type de soins*/ 
 if substr (GHM_NUM,3,1)='C' and SEJ_NBJ>0 then do; code_CAS='CH';libelle_CAS='Chirurgie non ambulatoire';end;
 else if substr (GHM_NUM,3,1)='C' and SEJ_NBJ=0 then do; code_CAS='CJ';libelle_CAS='Chirurgie ambulatoire';end;
 else if substr (GHM_NUM,3,1)='K' then do; code_CAS='PI';libelle_CAS='Interventionnel';end;
@@ -590,6 +591,7 @@ proc sort data=Bdd_rh30_meth1ercouple_&annee; by NIR_ANO_17 EXE_SOI_DTD EXE_SOI_
 %mend;
 
 %rehosp();
+
 
 
 
