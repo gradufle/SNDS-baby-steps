@@ -36,7 +36,7 @@
 /* Conditions sur les  tablissements */
 %let COND_ETAB_NONAP   = a.ETA_NUM not in &EXCLU_ETAB_AP.;
 %let COND_SEJ_NONB     = (SEJ_TYP^="B" or missing(SEJ_TYP)); /* Presta inter-établissements*/
-/* Qualit  de cha nage */
+/* Qualité de chainage */
 %let COND_CHAINAGE_OK  = (NIR_RET='0' and NAI_RET='0' and SEX_RET='0'
                           and SEJ_RET='0' and FHO_RET='0' and PMS_RET='0');
 /* Diagnostics valides */
@@ -45,7 +45,7 @@
 %let COND_ASS_DGN_OK   = not missing(ASS_DGN) and ASS_DGN not in ('XXXX');
 /* Soins palliatifs */
 %let COND_NO_SOIN_PALL = (GHM_NUM not in ('23Z02Z','23Z02T'));
-/* Typologie s jours */
+/* Typologie séjours */
 %let COND_NO_SEANCE    = substr(GHM_NUM,1,2) not in ('28','90');
 %let COND_NO_OBS_TRANS = substr(GHM_NUM,1,2) not in ('14','15','27');
 %let COND_NO_AMBU_SPEC = substr(GHM_NUM,1,5) not in 
@@ -117,7 +117,7 @@ proc sql;
 %end;
 %else %do;
 
-/*Ajout de l'année N+1 et N-1*/
+/*Ajout de l'année N+1*/
 
 %macro More_years (an1);
 
@@ -190,10 +190,40 @@ quit;
     quit;
   %end;
 
-/* Après Normalisaiton : détection des séjours indexes*/
+
+
+/***************************************************************************************************/
+/* ETAPE 2) Après Normalisaiton : Exclusion des séjours ne respectant pas les critères d'inclusion */
+/***************************************************************************************************/
+
+data SASDATA1.RHOSP_&AN;
+set SASDATA1.RHOSP_&AN;
+/* suppression des séjours d'obstétrique et de transplantation*/
+if substr(GHM_NUM,1,2) in ("14","15","27") then delete;
+/* suppression des séances en hospitalisation*/
+if substr(GHM_NUM,1,5) in ('11K02','17M05','17M06','17K04','17K05','17K06','17K08','17K09','23M09') then delete;
+/* suppression des séjours cataracte*/
+if substr(GHM_NUM,1,5) in ('02C05','02C12') then delete;
+/* Création de variables Décès, CMD, gravité, racine */
+if SOR_MOD = "9" then DECES = 1; else DECES = 0;
+PONDER = 1;
+CMD = substr(GHM_NUM,1,2);
+NIV = substr(GHM_NUM,6,1);
+RACINEV11=substr(GHM_NUM,1,5);
+length libelle_CAS  hospit $30.;
+/*Variables de type de soins*/ 
+if substr (GHM_NUM,3,1)='C' and SEJ_NBJ>0 then do; code_CAS='CH';libelle_CAS='Chirurgie non ambulatoire';end;
+else if substr (GHM_NUM,3,1)='C' and SEJ_NBJ=0 then do; code_CAS='CJ';libelle_CAS='Chirurgie ambulatoire';end;
+else if substr (GHM_NUM,3,1)='K' then do; code_CAS='PI';libelle_CAS='Interventionnel';end;
+else if substr (GHM_NUM,3,1) in('Z','M') and SEJ_NBJ=0 then do; code_CAS='X0';libelle_CAS='Médecine ambulatoire';end;
+else if substr (GHM_NUM,3,1) in('Z','M') and SEJ_NBJ>0 then do; code_CAS='XH';libelle_CAS='Médecine non ambulatoire'; end;
+if SEJ_NBJ=0 then hospit="Ambulatoire"; else hospit="Hospitalisation complète";
+run;
+
+/* Séjour index */
 
 proc sql;
-create table Index as 
+create table SASDATA1.Index as 
 select 
 from SASDATA1.RHOSP_&AN. 
 
