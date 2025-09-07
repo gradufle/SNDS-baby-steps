@@ -24,7 +24,7 @@
   '690784137','690784152','690784178','690787478','830100558'
 );
 
-/* Conditions d exclusion  patients  (centralis es) */
+/* Conditions d exclusion  patients  (centralisées) */
 %let COND_EXCLU_PAT = 
       AGE_ANN >= 18
   and substr(BDI_COD,1,2) not in ('99','9E','9G','9H','9J') /* Exclusion des DOM */
@@ -116,6 +116,10 @@ proc sql;
   left join ORAVUE.T_MCO&AN.GV11G c on a.ETA_NUM = c.ETA_NUM and a.RSA_NUM = c.RSA_NUM
 %end;
 %else %do;
+
+/*Ajout de l'année N+1 et N-1*/
+
+%macro
 
 %if "an1"<2015%then %do;
 	%if "&an1"="&anp1" %then %do;	
