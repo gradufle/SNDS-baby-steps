@@ -6,8 +6,7 @@
 %let annee  = 2012; 	/* Paramètre à indiquer : année sur laquelle on veut calculer les taux RH30 */ 		
 %let anneem1 = %eval(&annee-1 );   
 %let anneep1 = %eval(&annee+1 ); 
-%let an  = %substr(&annee,3,2); 		
-%let anm1 = %substr(&anneem1,3,2); 
+%let an  = %substr(&annee,3,2); 	
 %let anp1 = %substr(&anneep1,3,2); /* table infra annuelle */
 
 /*liste des finessgeo en doublons avant 2018*/
@@ -73,7 +72,6 @@
 %mend;
 
 %Diag_SNDS(&an);
-%Diag_SNDS(&anm1);
 %Diag_SNDS(&anp1);
 
 /***********************************************************************************/
@@ -140,9 +138,9 @@ proc sql;
 	%if "&an1"="&anp1" %then %do;	
 			left join ORAVUE.T_MCO&anp1.GV20&anp1. b on a.ETA_NUM = b.ETA_NUM and a.RSA_NUM = b.RSA_NUM
 		%end;
-		%else %do;	
+	%else %do;	
 			left join ORAVUE.T_MCO&an1.GV20&an1. b on a.ETA_NUM = b.ETA_NUM and a.RSA_NUM = b.RSA_NUM	 
-		%end;
+	%end;
 	%end;
 	left join diag_20&an1. d on a.ETA_NUM = d.ETA_NUM and a.RSA_NUM = d.RSA_NUM
 	/* Exclusion des séances et des séjours groupés en erreurs */
@@ -155,16 +153,15 @@ quit;
 	run;
 %mend;
 
-%fichier_an(&anm1);
 %fichier_an(&an); 
 %fichier_an(&anp1);
 
 
-data rsa_&anm1._&anp1;
-set rsa_chain_20&anm1 rsa_chain_20&an rsa_chain_20&anp1; 
+data rsa_&an._&anp1;
+set  rsa_chain_20&an rsa_chain_20&anp1; 
 run;
 
-/* rsa_N-1_N+1 => Base avec tous les RSA regroupés en &ver du 01/01/N-1 au 28/02/N+1, nécessaire 
+/* rsa_N_N+1 => Base avec tous les RSA regroupés en &ver du 01/01/N-1 au 28/02/N+1, nécessaire 
 au calcul des RH 30 (hors séances, CMD 90, sejours de type B et séjours non correctement chainés) */
 
 
@@ -172,8 +169,8 @@ au calcul des RH 30 (hors séances, CMD 90, sejours de type B et séjours non co
 /* ETAPE 2) 	Exclusion des séjours ne respectant pas les critères d'inclusion 	 */
 /*************************************************************************************/
 
-data rsa_&anm1._&anp1._;
-set rsa_&anm1._&anp1;
+data rsa_&an._&anp1._;
+set rsa_&an._&anp1;
 /* suppression des séjours d'obstétrique et de transplantation*/
 if substr(GHM_NUM,1,2) in ("14","15","27") then delete;
 /* suppression des séances en hospitalisation*/
@@ -197,13 +194,13 @@ if SEJ_NBJ=0 then hospit="Ambulatoire"; else hospit="Hospitalisation complète";
 run;
 
 /* Création d'une variable délai2 = délai en nb de jours entre 2 hospit sur toute la base du 01/01/N-1 au 28/02/N+1 */
-proc sort data=rsa_&anm1._&anp1._; 
+proc sort data=rsa_&an._&anp1._; 
 by NIR_ANO_17 EXE_SOI_DTD EXE_SOI_DTF SOR_MOD; 
 /* tri sur ano_datefin et mode de sortie nécessaire qd il y a 2 hospit avec même date entree et sortie */
 run;
 
-data rsa_&anm1._&anp1._a (drop =d);
-set  rsa_&anm1._&anp1._ ;
+data rsa_&an._&anp1._a (drop =d);
+set  rsa_&an._&anp1._ ;
 by NIR_ANO_17 EXE_SOI_DTD EXE_SOI_DTF SOR_MOD; 
 retain d;
 if first.NIR_ANO_17=1 then d=.;
@@ -217,18 +214,18 @@ run;
 
 /* Création de la variable delai_suiv qui indique le delai de l'enregistrement suivant 
 (exemple : le delai entre sej1 et sej2 sur la ligne de sej1) */
-data rsa_&anm1._&anp1._b;
-set rsa_&anm1._&anp1._a;
+data rsa_&an._&anp1._b;
+set rsa_&an._&anp1._a;
 by NIR_ANO_17 ; 
-set rsa_&anm1._&anp1._a ( firstobs = 2 keep = delai2 SOR_ANN rename = (delai2 = delai_suiv SOR_ANN=SOR_ANN_suiv) );
+set rsa_&an._&anp1._a ( firstobs = 2 keep = delai2 SOR_ANN rename = (delai2 = delai_suiv SOR_ANN=SOR_ANN_suiv) );
 delai_suiv = ifn(  last.NIR_ANO_17, (.), delai_suiv );
 SOR_ANN_suiv = ifn(  last.NIR_ANO_17, (.), SOR_ANN_suiv );
 run;
 
 /* Récupération du dernier enregistrement qui a été supprimé */
-data dern_enr; set rsa_&anm1._&anp1._a end=eof; if eof; run;
+data dern_enr; set rsa_&an._&anp1._a end=eof; if eof; run;
 
-data rsa_&anm1._&anp1._c; set rsa_&anm1._&anp1._b dern_enr; run;	
+data rsa_&an._&anp1._c; set rsa_&an._&anp1._b dern_enr; run;	
 
 
 /******************************************************************************************************/
@@ -236,7 +233,7 @@ data rsa_&anm1._&anp1._c; set rsa_&anm1._&anp1._b dern_enr; run;
 /******************************************************************************************************/
 
 data rsa_excl_&annee;
-set rsa_&anm1._&anp1._c(where=(SOR_ANN="&annee"));
+set rsa_&an._&anp1._c(where=(SOR_ANN="&annee"));
 by NIR_ANO_17 EXE_SOI_DTD EXE_SOI_DTF numordre;
 
 retain nbhospit&annee;
@@ -286,7 +283,7 @@ quit;
 /* Sélection des rehospit de début N+1 d'une hospit terminée en N pour les intégrer dans la base de l'année N */
 
 data rsa_Rehospt_Debut_&anneep1;
-set rsa_&anm1._&anp1._c (where=( SOR_ANN="&anneep1" and SOR_MOI in ('01','02'))); /* sélection des mois de janv fev N+1 (même groupage) */
+set rsa_&an._&anp1._c (where=( SOR_ANN="&anneep1" and SOR_MOI in ('01','02'))); /* sélection des mois de janv fev N+1 (même groupage) */
 by NIR_ANO_17 EXE_SOI_DTD EXE_SOI_DTF numordre;
 
 retain nbhospit&anneep1;
@@ -591,6 +588,7 @@ proc sort data=Bdd_rh30_meth1ercouple_&annee; by NIR_ANO_17 EXE_SOI_DTD EXE_SOI_
 %mend;
 
 %rehosp();
+
 
 
 
