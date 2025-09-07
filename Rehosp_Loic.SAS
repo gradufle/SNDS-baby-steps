@@ -94,20 +94,20 @@
   %drop_table_if_exists(SASDATA1, HAD_&ANP1);
   %drop_table_if_exists(SASDATA1, CONSO);
   
-/* Rehospitalisation + ajout de N+1 */
+/* Normalisation des GHM, création de tables de référence*/
 
 proc sql;
   create table SASDATA1.RHOSP_&AN as
   select
     a.NIR_ANO_17 as num_ano,
-    datepart(a.EXE_SOI_DTD) as dt_entree format=date9.
+    datepart(a.EXE_SOI_DTD) as dt_entree format=date9.,
+	c.GHM_NUM
   from ORAVUE.T_MCO&AN.C a
-  left join ORAVUE.T_MCO&AN.B b on a.RSA_NUM = b.RSA_NUM and a.ETA_NUM=b.ETA_NUM /* Adjust join key as needed */
-  left join ORAVUE.T_MCO&AN.D d on a.RSA_NUM = d.RSA_NUM and a.ETA_NUM=d.ETA_NUM /* Adjust join key as needed */
+  left join ORAVUE.T_MCO&AN.B b on a.RSA_NUM = b.RSA_NUM and a.ETA_NUM=b.ETA_NUM 
+  left join ORAVUE.T_MCO&AN.D d on a.RSA_NUM = d.RSA_NUM and a.ETA_NUM=d.ETA_NUM 
   /* Join to get GHM_NUM */
-
 %if &AN < 15 %then %do;
-  %let suffix_code = %eval(67 + (20&AN. - 2011));
+  %let suffix_code = %eval(67 + (20&AN. - 2011)); /* GHM pour N*/
   %let suffix = %sysfunc(byte(&suffix_code));
   %let gv_table = ORAVUE.T_MCO&AN.GV11&suffix;
   left join &gv_table c on a.ETA_NUM = c.ETA_NUM and a.RSA_NUM = c.RSA_NUM
@@ -119,7 +119,7 @@ proc sql;
 
 /*Ajout de l'année N+1 et N-1*/
 
-%macro
+%macro More_years (an1);
 
 %if "an1"<2015%then %do;
 	%if "&an1"="&anp1" %then %do;	
@@ -142,7 +142,7 @@ left join ORAVUE.T_MCO&anp1.GV11&suffix b on a.ETA_NUM = b.ETA_NUM and a.RSA_NUM
 		left join ORAVUE.T_MCO&an1.GV11G b on a.ETA_NUM = b.ETA_NUM and a.RSA_NUM = b.RSA_NUM	 
 	%end;
 %end;
-/* S lection pour 2015 */
+/* Sélection pour 2015 */
 %if "an1">2015 %then %do;
 %if "&an1"="&anp1" %then %do;	
 		left join ORAVUE.T_MCO&anp1.GV20&anp1. b on a.ETA_NUM = b.ETA_NUM and a.RSA_NUM = b.RSA_NUM
@@ -151,7 +151,6 @@ left join ORAVUE.T_MCO&anp1.GV11&suffix b on a.ETA_NUM = b.ETA_NUM and a.RSA_NUM
 		left join ORAVUE.T_MCO&an1.GV20&an1. b on a.ETA_NUM = b.ETA_NUM and a.RSA_NUM = b.RSA_NUM	 
 	%end;
 %end;
-
 
   left join ORAVUE.T_MCO&AN.GV20&AN. c on a.ETA_NUM = c.ETA_NUM and a.RSA_NUM = c.RSA_NUM
 %end;
@@ -190,3 +189,13 @@ quit;
       ;
     quit;
   %end;
+
+/* Après Normalisaiton : détection des séjours indexes*/
+
+proc sql;
+create table Index as 
+select 
+from SASDATA1.RHOSP_&AN. 
+
+quit;
+
