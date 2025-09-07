@@ -193,6 +193,9 @@ else if substr (GHM_NUM,3,1) in('Z','M') and SEJ_NBJ>0 then do; code_CAS='XH';li
 if SEJ_NBJ=0 then hospit="Ambulatoire"; else hospit="Hospitalisation complète";
 run;
 
+/*****************************************************/
+/*Etape 2b : création des délais entre séjours */
+/*****************************************************/
 /* Création d'une variable délai2 = délai en nb de jours entre 2 hospit sur toute la base du 01/01/N-1 au 28/02/N+1 */
 proc sort data=rsa_&an._&anp1._; 
 by NIR_ANO_17 EXE_SOI_DTD EXE_SOI_DTF SOR_MOD; 
@@ -588,6 +591,7 @@ proc sort data=Bdd_rh30_meth1ercouple_&annee; by NIR_ANO_17 EXE_SOI_DTD EXE_SOI_
 %mend;
 
 %rehosp();
+
 
 
 
