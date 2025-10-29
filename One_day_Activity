@@ -149,17 +149,15 @@ data WORK.MCO20_DATEE_JOUR;
 	DATE_E_J DATE_S_J;
 run;
 
-/* 3.3. Jointure cartésienne entre chaque UM et le calendrier
-         puis filtrage pour garder les jours où le patient est présent */
-proc sql;
-    create table WORK.OCCUPANCY_RAW_A as
-    select 
-        M.*,
-        C.DATE
-    from WORK.MCO20_DATEE_JOUR as M,
-         WORK.CALENDAR_2020 as C
-    where C.DATE between M.DATE_E_J and M.DATE_S_J;
-quit;
+/* 3.3. Expension des dates pour obtenir les jours de présence des patients*/
+
+data WORK.OCCUPANCY_RAW;
+    set WORK.MCO20_DATEE_JOUR;
+	format DATE date9.;
+    do DATE = DATE_E_J to DATE_S_J;
+        output;
+    end;
+run;
 
 /* 3.4. Comptage du nombre de patients présents par UM et par jour */
 proc sql;
@@ -172,29 +170,6 @@ proc sql;
     from WORK.OCCUPANCY_RAW_A
     group by ETA_NUM, NUM_ANO_UM, DATE
     order by ETA_NUM, NUM_ANO_UM, DATE;
-quit;
-
-/********************************************/
-/* 3.3. Jointure cartésienne entre chaque UM et le calendrier */
-
-proc sql;
-    create table sasdata1.OCCUPANCY_RAW as
-    select 
-        M.ETA_NUM,
-        M.NUM_ANO_UM,
-		M.AUT_TYP1_UM,
-        M.RSA_NUM,
-		M.NIR_ANO_17,
-		M.GRG_GHM, 
-		M.RUM_ORD_NUM,
-		M.AGE_ANN,
-		M.COD_SEX,
-		M.LOS,
-        C.DATE,
-	sum(missing(M.NUM_ANO_UM)) as MISS_NUM_UM
-	from WORK.MCO20_DATEE_JOUR as M,
-         WORK.CALENDAR_2020 as C
-    where C.DATE between M.DATE_E_J and M.DATE_S_J;
 quit;
 
 
