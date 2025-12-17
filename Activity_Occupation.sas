@@ -28,27 +28,26 @@
 /* A mettre en rapport avec les CIM-10 (diagnostiques) */
 
 proc sql;
-create table ORAUSER.RespBase_2020a as
+create table ORAUSER.Base_2020a as
 select a.ETA_NUM, a.RSA_NUM, a.NIR_ANO_17,
-b.AGE_ANN, b.COD_SEX, b.GHS_NUM, b.GRG_GHM, 
+/*b.AGE_ANN, b.COD_SEX, b.GHS_NUM, b.GRG_GHM, 
 substr(a.ETA_NUM,1,2) as DEP,
 substr(b.GRG_GHM,1,2) as CMD, 
 substr(b.GRG_GHM,6,1) as GRAV,
-b.DGN_PAL,
+b.DGN_PAL,*/
 a.EXE_SOI_DTD, a.EXE_SOI_DTF,
 (a.EXE_SOI_DTF-a.EXE_SOI_DTD)/86400 as LOS
-from ORAVUE.T_MCO20C a
-left join ORAVUE.T_MCO20B b 
-on a.ETA_NUM = b.ETA_NUM  and a.RSA_NUM = b.RSA_NUM;
+from ORAVUE.T_MCO20C a;
+/*left join ORAVUE.T_MCO20B b 
+on a.ETA_NUM = b.ETA_NUM  and a.RSA_NUM = b.RSA_NUM;*/
 quit;
 
-
-data ORAUSER.RespBase_2020; 
-set ORAUSER.RespBase_2020a;
-/*if CMD='04';*/
-LOS=(EXE_SOI_DTF-EXE_SOI_DTD)/86400;
+/*
+data ORAUSER.Base_2020; 
+set ORAUSER.Base_2020a;
+if CMD='04';
 run;
-
+*/
 /* Questionement sur l'occupancy d'une unité médicale */
 
 /* Nécessite :
@@ -68,11 +67,12 @@ run;
 /* 1) Concaténation entre T_MCO20C et T_MCO20UM sur RSA_NUM et ETA_NUM */
 proc sql;
 create table ORAUSER.MCO20 as select 
-	C.*, U.NUM_ANO_UM, 
+	C.*, 
+	U.NUM_ANO_UM, 
 	U.AUT_TYP1_UM, 
 	U.RUM_ORD_NUM,
 	U.PAR_DUR_SEJ
-    from ORAUSER.RespBase_2020 as C
+    from ORAUSER.Base_2020a as C
     inner join ORAVUE.T_MCO20UM as U
         on C.RSA_NUM = U.RSA_NUM
        and C.ETA_NUM  = U.ETA_NUM
@@ -84,6 +84,7 @@ quit;
 /* Calcul itératif de DATE_E en SDATEtime */
 data ORAUSER.MCO20_DATEE;
   set ORAUSER.MCO20;
+  /*Par triplette ETA RSA ordre RUM faire les conditions*/
   by ETA_NUM RSA_NUM RUM_ORD_NUM;
   /* variables de rétention pour l'itération */
   retain prev_date_e prev_par_dur;
@@ -126,12 +127,10 @@ data ORAUSER.MCO20_DATEE_JOUR;
     format DATE_E_J DATE_S_J DATE9.;
     DATE_E_J = datepart(DATE_E);
     DATE_S_J = datepart(DATE_S);
-    keep ETA_NUM NUM_ANO_UM AUT_TYP1_UM NIR_ANO_17 RSA_NUM GRG_GHM RUM_ORD_NUM AGE_ANN COD_SEX LOS
+    keep ETA_NUM NUM_ANO_UM AUT_TYP1_UM NIR_ANO_17 RSA_NUM RUM_ORD_NUM LOS
 	DATE_E_J DATE_S_J;
 run;
 
-proc contents data=ORAUSER.MCO20_DATEE_JOUR;
-run;
 
 proc sql ;
 create table WORK.Counts_Resp as
@@ -140,77 +139,39 @@ count(*) as Nb_lines
 from ORAUSER.MCO20_DATEE_JOUR;
 quit;
 
-
-/* 3.3. Expension des SDATEs pour obtenir les jours de présence des patients*/
-data ORAUSER.OCCUPANCY_RAW;
-    set ORAUSER.mco20_datee_jour;
-    do SDATE = DATE_E_J to DATE_S_J  by 86400;
-    output;
-	end;
-run;
-
-proc sql ;
-create table WORK.Count_occup as
-select
-count(*) as Nb_lines
-from ORAUSER.OCCUPANCY_RAW;
-quit;
-
-/* 3.4. Comptage du nombre de patients présents par UM et par jour */
 proc sql;
-    create table ORAUSER.OCCUPANCY_UM as
-    select 
-        ETA_NUM,
-        NUM_ANO_UM,
-		AU_TYP1_UM
-        SDATE,
-        count(distinct RSA_NUM) as NB_PAT
-    from ORAUSER.OCCUPANCY_RAW
-    group by ETA_NUM, NUM_ANO_UM, SDATE
-    order by ETA_NUM, NUM_ANO_UM, SDATE;
+    create table eta_list as
+    select distinct ETA_NUM, NUM_ANO_UM
+    from ORAUSER.MCO20_DATEE_JOUR;
 quit;
 
-
-/* 3.5. Liste complète des combinaisons UM x jour */
 proc sql;
-    create table ORAUSER.UM_CALENDAR as
-    select distinct 
-        M.ETA_NUM,
-        M.NUM_ANO_UM,
-        C.SDATE
-    from ORAVUE.T_MCO20SUP_IUM as M,
-         ORAUSER.CALENDAR_2020 as C;
+    create table eta_calendar as
+    select
+        e.ETA_NUM,
+		e.NUM_ANO_UM,
+        c.SDATE
+    from eta_list as e,
+         ORAUSER.CALENDAR_2020 as c;
 quit;
 
-/* 3.6. Comptage du nombre de patients présents, puis jointure pour remplir les zéros */
-/* 3.6.1: Aggregation patient counts */
+
 proc sql;
-    create table ORAUSER.OCCUPANCY_COUNTS as
-    select 
-        ETA_NUM,
-        NUM_ANO_UM,
-        SDATE,
-        count(distinct RSA_NUM) as NB_PAT
-    from ORAUSER.OCCUPANCY_RAW
-    group by ETA_NUM, NUM_ANO_UM, SDATE;
+    create table work.daily_counts as
+    select
+        g.ETA_NUM, g.NUM_ANO_UM, g.SDATE,
+        coalesce(count(m.RSA_NUM), 0) as nb_pat
+    from eta_calendar as g
+    left join ORAUSER.MCO20_DATEE_JOUR as m
+        on g.ETA_NUM = m.ETA_NUM
+	   and g.NUM_ANO_UM = m.NUM_ANO_UM
+       and m.DATE_E_J <= g.SDATE
+       and g.SDATE <= m.DATE_S_J
+    group by
+        g.ETA_NUM, g.NUM_ANO_UM, g.SDATE
+    order by
+        g.ETA_NUM, g.NUM_ANO_UM, g.SDATE;
 quit;
-
-/* 3.6.2: Remplissage de zéros */
-proc sql;
-    create table ORAUSER.OCCUPANCY_UM_Z as
-    select 
-        UC.ETA_NUM,
-        UC.NUM_ANO_UM,
-        UC.SDATE,
-        coalesce(O.NB_PAT, 0) as NB_PAT
-    from ORAUSER.UM_CALENDAR as UC
-    left join ORAUSER.OCCUPANCY_COUNTS as O
-      on UC.ETA_NUM = O.ETA_NUM
-     and UC.NUM_ANO_UM = O.NUM_ANO_UM
-     and UC.SDATE = O.SDATE
-    order by UC.ETA_NUM, UC.NUM_ANO_UM, UC.SDATE;
-quit;
-
 
 proc sql;
     create table ORAUSER.OCCUPANCY_UM_JR as
@@ -220,9 +181,10 @@ proc sql;
         UC.SDATE,
         UC.NB_PAT,
 		O.AUT_TYP_UM,
-		O.NBR_LIT_UM
-    from ORAUSER.OCCUPANCY_UM_Z as UC
-    left join ORAUSER.T_MCO20SUP_IUM as O
+		O.NBR_LIT_UM,
+		O.ETA_NUM_GEO
+    from work.daily_counts as UC
+    left join ORAVUE.T_MCO20SUP_IUM as O
       on UC.ETA_NUM = O.ETA_NUM
      and UC.NUM_ANO_UM = O.NUM_ANO_UM
     order by UC.ETA_NUM, UC.NUM_ANO_UM, UC.SDATE, O.AUT_TYP_UM;
